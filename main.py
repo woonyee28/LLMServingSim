@@ -267,6 +267,11 @@ def main():
     if network_backend == 'ns3':
         args.append("--logical-topology-configuration="+astra_sim+"/inputs/logical_topology/logical_8nodes_1D.json")
     p = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    import threading
+    def drain_stderr(proc):
+        for line in proc.stderr:
+            print("[ASTRA-SIM STDERR]", line, end='', flush=True)
+    threading.Thread(target=drain_stderr, args=(p,), daemon=True).start()
 
     # ----------------------------------- Start simulation loop ------------------------------------
     # Starting simulation, one while loop processes one iteration

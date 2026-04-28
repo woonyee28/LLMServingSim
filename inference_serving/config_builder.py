@@ -133,6 +133,7 @@ def build_cluster_config(astra_sim, cluster_config_path, enable_local_offloading
     decode_instance = []
     start_npu_ids = ""
     end_npu_ids = ""
+    instance_npus_per_group = []
     placement = []
     block_mode_on = []
     power_configs = []
@@ -295,6 +296,7 @@ def build_cluster_config(astra_sim, cluster_config_path, enable_local_offloading
                 prefill_instance.append(instance_id)
             elif pd_type == "decode":
                 decode_instance.append(instance_id)
+            instance_npus_per_group.append(npu_num // npu_group)
 
             if npu_num > 1:
                 end_npu_ids += str(current_npu_start + npu_num - 1) + "," # npus to check end condition (kv send end in prefill)
@@ -369,7 +371,7 @@ def build_cluster_config(astra_sim, cluster_config_path, enable_local_offloading
         effective_num_instances = total_num_instances + len(prefill_instance)
 
         # create network config file
-        _create_network_config(network_config_path, total_npu, total_npu_group, effective_num_instances, link_bw, link_latency)
+        _create_network_config(network_config_path, total_npu, total_npu_group, effective_num_instances, link_bw, link_latency, instance_npus_per_group)
 
         # generate memory config file
         with open(memory_config_path, "w", encoding="utf-8") as f:
@@ -404,14 +406,21 @@ def build_cluster_config(astra_sim, cluster_config_path, enable_local_offloading
     return cluster
 
 # generates topology according to the input arguments
-def _create_network_config(netwok_config_path, npu_nums, npu_group, num_instances, link_bw, link_latency):
-    
+def _create_network_config(netwok_config_path, npu_nums, npu_group, num_instances, link_bw, link_latency, instance_npus_per_group=None):
+
     if npu_nums == npu_group:
         # full pipeline parallelism, one dimension for each instance is sufficient
         npus_per_group = npu_nums//num_instances
         npu_group = num_instances
     else:
-        npus_per_group = npu_nums//npu_group
+        if instance_npus_per_group:
+            inner_dim = instance_npus_per_group[0]
+            for x in instance_npus_per_group[1:]:
+                inner_dim = math.gcd(inner_dim, x)
+        else:
+            inner_dim = npu_nums // npu_group
+        npus_per_group = inner_dim
+        npu_group = npu_nums // inner_dim
 
     topology_data = {
         "topology": FlowStyleList(["FullyConnected"] * 2 if npu_group > 1 else ["FullyConnected"]),
